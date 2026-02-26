@@ -2,14 +2,43 @@ import { writable, derived } from 'svelte/store'
 import { MoodLensMachine, STATES, EVENTS } from '$lib/fsm/moodLensMachine.js'
 
 // ─── Instancia única de la FSM ───────────────────────────────────────────────
-const machine = new MoodLensMachine()
+const machine = new MoodLensMachine({
+  async requestPermission(){
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'user'}, audio: false})
+
+      machine.send(EVENTS.PERMISSION_GRANTED, {stream})
+    } catch (err) {
+      machine.send(EVENTS.PERMISSION_DENIED, {error: err})
+    }
+  }
+})
 
 // ─── Store interno del estado FSM ────────────────────────────────────────────
 const _fsmState = writable(machine.state)
 
 // Sincroniza la FSM con el store cada vez que hay una transición
-machine.subscribe(({ to }) => {
+// machine.subscribe(({ to }) => {
+//   _fsmState.set(to)
+// })
+
+machine.subscribe(({ to, event, payload }) => {
   _fsmState.set(to)
+
+  if (event === EVENTS.PERMISSION_GRANTED && payload?.stream) {
+    _stream.set(payload.stream)
+  }
+
+  if (event === EVENTS.PERMISSION_DENIED) {
+    _stream.set(null)
+  }
+
+  if (event === EVENTS.STOP) {
+    _stream.update((s) => {
+      if (s) s.getTracks().forEach(t => t.stop())
+      return null
+    })
+  }
 })
 
 // ─── Store de datos de UI ────────────────────────────────────────────────────
@@ -30,10 +59,15 @@ const _history = writable([
   { label: 'Disgusted', emoji: '🤢', color: 'green',  time: '11:52 PM' },
 ])
 
+const _stream = writable(null)
+
 // ─── Stores públicos (solo lectura para los componentes) ─────────────────────
 
 // El estado FSM como string: 'idle' | 'scanning' | ...
 export const fsmState = { subscribe: _fsmState.subscribe }
+
+// El stream de video (si se ha concedido permiso)
+export const stream = { subscribe: _stream.subscribe }
 
 // Datos derivados de conveniencia
 export const isIdle = derived(_fsmState, s => s === STATES.IDLE)
