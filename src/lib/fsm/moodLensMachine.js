@@ -12,23 +12,31 @@
 export const STATES = {
   IDLE:     'idle',
   SCANNING: 'scanning',
+  REQUESTING_PERMISSION: 'requesting_permission',
   // Futuros: REQUESTING_PERMISSION, PAUSED, ERROR, FACE_LOST...
 }
 
 export const EVENTS = {
   START: 'START',
   STOP:  'STOP',
+  PERMISSION_GRANTED: 'PERMISSION_GRANTED',
+  PERMISSION_DENIED: 'PERMISSION_DENIED',
   // Futuros: PERMISSION_GRANTED, PERMISSION_DENIED, PAUSE, FACE_LOST...
 }
 
 // Tabla de transiciones: { [estado]: { [evento]: siguienteEstado } }
 const TRANSITIONS = {
   [STATES.IDLE]: {
-    [EVENTS.START]: STATES.SCANNING,
+    // [EVENTS.START]: STATES.SCANNING,
+    [EVENTS.START]: STATES.REQUESTING_PERMISSION,
   },
   [STATES.SCANNING]: {
     [EVENTS.STOP]: STATES.IDLE,
   },
+  [STATES.REQUESTING_PERMISSION]:{
+    [EVENTS.PERMISSION_GRANTED]: STATES.SCANNING,
+    [EVENTS.PERMISSION_DENIED]: STATES.IDLE
+  }
 }
 
 // ─── Clase FSM ───────────────────────────────────────────────────────────────
@@ -36,10 +44,12 @@ const TRANSITIONS = {
 export class MoodLensMachine {
   #state
   #listeners
+  #effects
 
-  constructor() {
+  constructor(effects = {}) {
     this.#state     = STATES.IDLE
     this.#listeners = []
+    this.#effects   = effects
   }
 
   // Estado actual (lectura)
@@ -57,7 +67,7 @@ export class MoodLensMachine {
   }
 
   // Dispara un evento y realiza la transición si es válida
-  send(event) {
+  send(event, payload = {}) {
     const currentTransitions = TRANSITIONS[this.#state]
 
     if (!currentTransitions || !(event in currentTransitions)) {
@@ -75,7 +85,7 @@ export class MoodLensMachine {
     this.#onEnter(to)
 
     // Notifica a todos los suscriptores
-    this.#listeners.forEach(fn => fn({ from, to, event }))
+    this.#listeners.forEach(fn => fn({ from, to, event, payload }))
 
     return true
   }
@@ -96,6 +106,10 @@ export class MoodLensMachine {
     // Ejemplo futuro: if (state === STATES.REQUESTING_PERMISSION) requestCameraAccess()
     if (import.meta.env.DEV) {
       console.log(`[MoodLensFSM] → Entrando a: "${state}"`)
+    }
+
+    if (state === STATES.REQUESTING_PERMISSION) {
+     this.#effects.requestPermission?.(this)
     }
   }
 
