@@ -4,7 +4,7 @@
   import EmotionOrb      from '$lib/components/EmotionOrb.svelte'
   import EmotionHistory  from '$lib/components/EmotionHistory.svelte'
 
-  import { fsmState, isScanning, emotion, history, actions } from '$lib/stores/moodLens.js'
+  import { stream, fsmState, isScanning, emotion, history, actions } from '$lib/stores/moodLens.js'
 </script>
 
 <div class="min-h-screen bg-slate-100 dark:bg-slate-950 flex flex-col">
@@ -52,7 +52,7 @@
       </div>
 
       <div class="flex-1 w-full max-w-2xl">
-        <CameraFeed appState={$fsmState} emotion={$emotion} />
+        <CameraFeed emotion={$emotion} appState={$fsmState} stream={$stream} />
       </div>
 
       <div class="w-full md:w-56 flex-shrink-0 flex justify-center">
