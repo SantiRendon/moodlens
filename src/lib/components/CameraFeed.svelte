@@ -1,6 +1,9 @@
 <script>
   export let appState = 'idle';
   export let emotion = null;
+  export let stream = null;
+
+  let videoEl;
 
   const borderColorMap = {
     yellow: 'ring-yellow-400',
@@ -15,6 +18,10 @@
   $: ringColor = appState === 'scanning' && emotion
     ? (borderColorMap[emotion.color] ?? 'ring-violet-500')
     : 'ring-slate-300 dark:ring-slate-700';
+
+    $: if (videoEl) {
+      videoEl.srcObject = stream || null;
+    }
 </script>
 
 <div class="relative w-full aspect-video rounded-2xl overflow-hidden
@@ -37,6 +44,7 @@
     <div class="absolute inset-0 bg-slate-900 flex items-center justify-center">
       <!-- Placeholder for real <video> element -->
       <video
+        bind:this={videoEl}
         class="w-full h-full object-cover"
         autoplay
         muted
