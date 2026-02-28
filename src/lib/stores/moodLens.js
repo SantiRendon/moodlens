@@ -1,6 +1,6 @@
 import { writable, derived } from 'svelte/store'
 import { MoodLensMachine, STATES, EVENTS } from '$lib/fsm/moodLensMachine.js'
-
+import { ensureModelsLoaded } from "$lib/vision/faceApiModels.js";
 // ─── Instancia única de la FSM ───────────────────────────────────────────────
 const machine = new MoodLensMachine({
   async requestPermission(){
@@ -22,7 +22,7 @@ const _fsmState = writable(machine.state)
 //   _fsmState.set(to)
 // })
 
-machine.subscribe(({ to, event, payload }) => {
+machine.subscribe(async ({ to, event, payload }) => {
   _fsmState.set(to)
 
   if (event === EVENTS.PERMISSION_GRANTED && payload?.stream) {
@@ -38,6 +38,15 @@ machine.subscribe(({ to, event, payload }) => {
       if (s) s.getTracks().forEach(t => t.stop())
       return null
     })
+  }
+
+  if (to === STATES.SCANNING) {
+    try {
+      let model = await ensureModelsLoaded()
+      console.log("Models loaded successfully", model)
+    } catch (err) {
+      console.error("Error loading models:", err)
+    }
   }
 })
 
@@ -58,6 +67,20 @@ const _history = writable([
   { label: 'Fearful',   emoji: '😨', color: 'purple', time: '11:53 PM' },
   { label: 'Disgusted', emoji: '🤢', color: 'green',  time: '11:52 PM' },
 ])
+
+function mapExpressionToUI(label) {
+  // labels típicos de face-api: neutral, happy, sad, angry, fearful, disgusted, surprised
+  const map = {
+    happy: { emoji: '😊', color: 'yellow' },
+    surprised: { emoji: '😲', color: 'orange' },
+    neutral: { emoji: '😐', color: 'slate' },
+    sad: { emoji: '😢', color: 'blue' },
+    angry: { emoji: '😠', color: 'red' },
+    fearful: { emoji: '😨', color: 'purple' },
+    disgusted: { emoji: '🤢', color: 'green' },
+  }
+  return map[label] ?? { emoji: '🙂', color: 'slate' }
+}
 
 const _stream = writable(null)
 
@@ -85,7 +108,22 @@ export const actions = {
   stop() {
     machine.send(EVENTS.STOP)
   },
-  // Futuro: setEmotion(data) { _emotion.set(data) }
+   setEmotionFromVision({ label, confidence }) {
+    const key = String(label).toLowerCase()
+    const ui = mapExpressionToUI(key)
+
+    _emotion.set({
+      label: key[0].toUpperCase() + key.slice(1),
+      confidence,
+      ...ui
+    })
+
+    // opcional: historial (mantén corto)
+    const now = new Date()
+    const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+    _history.update(h => [{ label: key[0].toUpperCase() + key.slice(1), time, ...ui }, ...h].slice(0, 20))
+  }
   // Futuro: addToHistory(item) { _history.update(h => [item, ...h].slice(0, 20)) }
 }
 

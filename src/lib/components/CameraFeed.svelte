@@ -1,4 +1,9 @@
 <script>
+	import { onMount, onDestroy } from 'svelte'
+  import * as faceapi from 'face-api.js'
+  import { ensureModelsLoaded } from '$lib/vision/faceapiModels.js'
+  import { actions } from '$lib/stores/moodLens.js'
+
   export let appState = 'idle';
   export let emotion = null;
   export let stream = null;
@@ -22,6 +27,105 @@
     $: if (videoEl) {
       videoEl.srcObject = stream || null;
     }
+
+  let timer = null
+  let busy = false
+
+  let lastLabel = null
+  let stableCount = 0
+  const REQUIRED_TICKS = 3
+
+
+  function pickTopExpression(expressions) {
+    const entries = Object.entries(expressions ?? {})
+    if (!entries.length) return null
+    entries.sort((a, b) => b[1] - a[1])
+    const [label, score] = entries[0]
+    return { label, confidence: Math.round(score * 100) }
+  }
+
+  async function tickDetect() {
+    if (!videoEl || appState !== 'scanning') return
+    if (busy) return
+    if (videoEl.readyState < 2) return // no frame todavía
+
+    busy = true
+    try {
+      const options = new faceapi.TinyFaceDetectorOptions({
+        inputSize: 160,
+        scoreThreshold: 0.5
+      })
+
+      const result = await faceapi
+        .detectSingleFace(videoEl, options)
+        .withFaceExpressions()
+
+      if (result?.expressions) {
+        const top = pickTopExpression(result.expressions)
+        // if (top) actions.setEmotionFromVision(top)
+
+        if (top) {
+          const label = String(top.label).toLowerCase()
+
+          if (label === lastLabel) stableCount += 1
+          else { lastLabel = label; stableCount = 1 }
+
+          if (stableCount >= REQUIRED_TICKS) {
+            actions.setEmotionFromVision({ label, confidence: top.confidence })
+        }
+}
+      }
+      // si no hay cara, podrías setear un estado "no_face" (solo UI) más adelante
+    } catch (e) {
+      // por ahora solo consola
+      console.error(e)
+    } finally {
+      busy = false
+    }
+  }
+
+  function startLoop() {
+    if (timer) return
+    timer = setInterval(tickDetect, 200)
+  }
+
+  function stopLoop() {
+    if (!timer) return
+    clearInterval(timer)
+    timer = null
+  }
+
+  // Importante: onMount NO debe ser async si vas a retornar cleanup sin problemas [web:400]
+  onMount(() => {
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        await ensureModelsLoaded()
+        if (cancelled) return
+        if (appState === 'scanning') startLoop()
+      } catch (e) {
+        console.error('Model load failed', e)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      stopLoop()
+    }
+  })
+
+  // Reaccionar a cambios de estado
+  $: if (appState === 'scanning') {
+    // si modelos ya cargaron, arranca loop
+    startLoop()
+  } else {
+    stopLoop()
+  }
+
+  onDestroy(() => {
+    stopLoop()
+  })
 </script>
 
 <div class="relative w-full aspect-video rounded-2xl overflow-hidden
